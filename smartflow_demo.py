@@ -306,35 +306,50 @@ def distribute_traffic(real_count_A: int) -> dict[str, int]:
 CURRENT_GREEN_IDX = 0
 GREEN_REMAINING = 0   # sisa detik hijau
 GREEN_ORDER = ["Simpang B", "Simpang C", "Simpang D", "Simpang A"]
+# Constants baru
+MAX_GREEN_SIDE = 45  # detik per sisi
 
 def update_green_light(queue_dict: dict[str, int], dt: float = 0.5) -> dict[str, int]:
     """
-    Menghitung durasi hijau countdown.
-    dt = interval waktu update (detik), misal loop 0.5s
+    Update countdown hijau per persimpangan.
+    - Max Green: 45 detik per sisi
+    - Min Green: 15 detik
+    - Jika persimpangan aktif kosong → langsung pindah hijau ke berikutnya
     """
     global CURRENT_GREEN_IDX, GREEN_REMAINING, GREEN_ORDER
 
-    green_times = {k: 0 for k in queue_dict}  # default semua merah
+    green_times = {k: 0 for k in queue_dict}  # semua default merah
     active = GREEN_ORDER[CURRENT_GREEN_IDX]
 
-    if GREEN_REMAINING <= 0:
-        # mulai countdown baru berdasarkan panjang antrean
-        queue_len = queue_dict[active]
-        GREEN_REMAINING = min(MAX_GREEN, max(MIN_GREEN, queue_len))
-    
-    # beri hijau ke persimpangan aktif
-    green_times[active] = int(GREEN_REMAINING)
+    # Jika semua persimpangan kosong, beri MIN_GREEN ke semua
+    if all(v == 0 for v in queue_dict.values()):
+        for k in queue_dict:
+            green_times[k] = MIN_GREEN
+        GREEN_REMAINING = MIN_GREEN
+        return green_times
 
     # Kurangi sisa durasi hijau
     GREEN_REMAINING -= dt
 
-    # Kurangi volume kendaraan sesuai flow (misal 1 unit per dt)
-    queue_dict[active] = max(0, queue_dict[active] - 1)
-
-    # Jika hijau habis & antrean 0, pindah ke persimpangan berikutnya
-    if GREEN_REMAINING <= 0 and queue_dict[active] == 0:
+    # Jika persimpangan aktif kosong → langsung pindah
+    if queue_dict[active] == 0:
         CURRENT_GREEN_IDX = (CURRENT_GREEN_IDX + 1) % len(GREEN_ORDER)
-        GREEN_REMAINING = 0  # reset countdown
+        active = GREEN_ORDER[CURRENT_GREEN_IDX]
+        queue_len = queue_dict[active]
+        GREEN_REMAINING = min(MAX_GREEN_SIDE, max(MIN_GREEN, queue_len))
+
+    # Jika countdown habis → pindah persimpangan berikutnya
+    elif GREEN_REMAINING <= 0:
+        CURRENT_GREEN_IDX = (CURRENT_GREEN_IDX + 1) % len(GREEN_ORDER)
+        active = GREEN_ORDER[CURRENT_GREEN_IDX]
+        queue_len = queue_dict[active]
+        GREEN_REMAINING = min(MAX_GREEN_SIDE, max(MIN_GREEN, queue_len))
+
+    # Beri hijau ke persimpangan aktif
+    green_times[active] = int(GREEN_REMAINING)
+
+    # Kurangi volume kendaraan sesuai flow
+    queue_dict[active] = max(0, queue_dict[active] - 1)
 
     return green_times
 
@@ -509,7 +524,7 @@ def run_demo_mode():
             else:
                 queue_dict["Simpang A"] = total_vehicle_detected
 
-            green_lights = update_green_light(queue_dict, dt=0.5)
+            green_lights = update_green_light(queue_dict, dt=0.1)
 
             dashboard = build_dashboard(
                 frame_no        = frame_no,
@@ -619,7 +634,7 @@ def run_video_mode(video_path: str, show_window: bool = True):
             else:
                 queue_dict["Simpang A"] = total_vehicle_detected
 
-            green_lights = update_green_light(queue_dict, dt=0.5)
+            green_lights = update_green_light(queue_dict, dt=0.1)
 
             # ── Tahap 5: Render Bounding Box ke jendela OpenCV ────────────────
             if show_window:
