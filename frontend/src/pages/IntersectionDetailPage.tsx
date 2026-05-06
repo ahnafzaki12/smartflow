@@ -8,15 +8,8 @@ import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianG
 import { useIntersectionStore } from '@/store/intersectionStore';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { IntersectionSimulation } from '@/components/map/IntersectionSimulation';
+import { useSmartFlowApi } from '@/hooks/useSmartFlowApi';
 import type { Lane } from '@/types/intersection';
-
-// ─── Static mock lane data (will come from API per intersection) ──────────────
-const LANES: Lane[] = [
-  { name: 'North', cars: 24, motorcycles: 48, trucks: 3, queue: 82, aiGreen: 42, oldGreen: 30 },
-  { name: 'East',  cars: 18, motorcycles: 35, trucks: 2, queue: 54, aiGreen: 28, oldGreen: 30 },
-  { name: 'South', cars: 31, motorcycles: 62, trucks: 5, queue: 95, aiGreen: 55, oldGreen: 30 },
-  { name: 'West',  cars: 12, motorcycles: 27, trucks: 1, queue: 33, aiGreen: 22, oldGreen: 30 },
-];
 
 const TIMELINE = Array.from({ length: 30 }, (_, i) => ({
   t: `${i}m`,
@@ -32,6 +25,17 @@ export default function IntersectionDetailPage() {
 
   const intersections = useIntersectionStore((s) => s.intersections);
   const intersection = intersections.find((i) => i.id === id) ?? intersections[0];
+
+  const { data: apiData } = useSmartFlowApi();
+  const totalVehicles = apiData.queue['Simpang A'] + apiData.queue['Simpang B'] + apiData.queue['Simpang C'] + apiData.queue['Simpang D'];
+
+  // Dynamic mapping from API
+  const LANES: Lane[] = [
+    { name: 'North', cars: Math.floor(apiData.queue['Simpang A'] * 0.6), motorcycles: Math.floor(apiData.queue['Simpang A'] * 0.3), trucks: Math.ceil(apiData.queue['Simpang A'] * 0.1), queue: apiData.queue['Simpang A'], aiGreen: apiData.green_lights['Simpang A'] > 0 ? apiData.green_lights['Simpang A'] : 15, oldGreen: 15 },
+    { name: 'East',  cars: Math.floor(apiData.queue['Simpang B'] * 0.6), motorcycles: Math.floor(apiData.queue['Simpang B'] * 0.3), trucks: Math.ceil(apiData.queue['Simpang B'] * 0.1), queue: apiData.queue['Simpang B'], aiGreen: apiData.green_lights['Simpang B'] > 0 ? apiData.green_lights['Simpang B'] : 15, oldGreen: 15 },
+    { name: 'South', cars: Math.floor(apiData.queue['Simpang C'] * 0.6), motorcycles: Math.floor(apiData.queue['Simpang C'] * 0.3), trucks: Math.ceil(apiData.queue['Simpang C'] * 0.1), queue: apiData.queue['Simpang C'], aiGreen: apiData.green_lights['Simpang C'] > 0 ? apiData.green_lights['Simpang C'] : 15, oldGreen: 15 },
+    { name: 'West',  cars: Math.floor(apiData.queue['Simpang D'] * 0.6), motorcycles: Math.floor(apiData.queue['Simpang D'] * 0.3), trucks: Math.ceil(apiData.queue['Simpang D'] * 0.1), queue: apiData.queue['Simpang D'], aiGreen: apiData.green_lights['Simpang D'] > 0 ? apiData.green_lights['Simpang D'] : 15, oldGreen: 15 },
+  ];
 
   return (
     <div className="p-8 space-y-6">
@@ -52,7 +56,11 @@ export default function IntersectionDetailPage() {
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          <StatusBadge status={intersection.status} vehicles={intersection.vehicles} />
+          {/* Dynamic live badge */}
+          <StatusBadge 
+            status={totalVehicles > 60 ? 'congested' : totalVehicles > 30 ? 'medium' : 'smooth'} 
+            vehicles={totalVehicles} 
+          />
           <button className="px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white text-sm flex items-center gap-2 transition">
             <AlertTriangle className="w-4 h-4" /> Emergency Mode
           </button>

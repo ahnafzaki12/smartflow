@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import type { Intersection, IntersectionStatus } from '@/types/intersection';
+import { useSmartFlowApi } from '@/hooks/useSmartFlowApi';
 
 const statusColors: Record<IntersectionStatus, string> = {
   smooth:    '#10b981',
@@ -15,27 +15,14 @@ interface TrafficMapProps {
 }
 
 export function TrafficMap({ intersections, selectedId, onSelect }: TrafficMapProps) {
-  const [phase, setPhase] = useState(0);
+  const { data: apiData } = useSmartFlowApi();
 
-  useEffect(() => {
-    let timeout: ReturnType<typeof setTimeout>;
-    const runCycle = (p: number) => {
-      setPhase(p);
-      // Even phases are Green (5s), Odd are Yellow (2s)
-      const duration = p % 2 === 0 ? 5000 : 2000;
-      timeout = setTimeout(() => runCycle((p + 1) % 8), duration);
-    };
-    runCycle(0);
-    return () => clearTimeout(timeout);
-  }, []);
-
-  const getLights = (p: number) => {
-    // p: 0=N-G, 1=N-Y, 2=E-G, 3=E-Y, 4=S-G, 5=S-Y, 6=W-G, 7=W-Y
+  const getLights = () => {
     return {
-      N: p === 0 ? '#10b981' : (p === 1 ? '#fbbf24' : '#ef4444'),
-      E: p === 2 ? '#10b981' : (p === 3 ? '#fbbf24' : '#ef4444'),
-      S: p === 4 ? '#10b981' : (p === 5 ? '#fbbf24' : '#ef4444'),
-      W: p === 6 ? '#10b981' : (p === 7 ? '#fbbf24' : '#ef4444'),
+      N: apiData.green_lights['Simpang A'] > 0 ? '#10b981' : '#ef4444',
+      E: apiData.green_lights['Simpang B'] > 0 ? '#10b981' : '#ef4444',
+      S: apiData.green_lights['Simpang C'] > 0 ? '#10b981' : '#ef4444',
+      W: apiData.green_lights['Simpang D'] > 0 ? '#10b981' : '#ef4444',
     };
   };
 
@@ -74,7 +61,10 @@ export function TrafficMap({ intersections, selectedId, onSelect }: TrafficMapPr
       {/* Intersection nodes */}
       {intersections.map((i) => {
         const isSelected = selectedId === i.id;
-        const lights = getLights(phase);
+        const lights = getLights();
+        
+        const totalVehicles = apiData.queue['Simpang A'] + apiData.queue['Simpang B'] + apiData.queue['Simpang C'] + apiData.queue['Simpang D'];
+        const liveStatus = totalVehicles > 60 ? 'congested' : totalVehicles > 30 ? 'medium' : 'smooth';
 
         return (
           <button
@@ -82,7 +72,7 @@ export function TrafficMap({ intersections, selectedId, onSelect }: TrafficMapPr
             onClick={() => onSelect?.(i.id)}
             className="absolute -translate-x-1/2 -translate-y-1/2 group focus:outline-none w-4 h-4 flex items-center justify-center"
             style={{ left: `${i.x}%`, top: `${i.y}%` }}
-            title={`${i.name} — ${i.status} · ${i.vehicles} veh`}
+            title={`${i.name} — ${liveStatus} · ${totalVehicles} veh`}
           >
             {/* Traffic Lights */}
             {/* North Light */}
@@ -96,7 +86,7 @@ export function TrafficMap({ intersections, selectedId, onSelect }: TrafficMapPr
 
             {/* Tooltip label */}
             <span className="absolute left-5 top-1/2 -translate-y-1/2 whitespace-nowrap bg-slate-800/90 backdrop-blur border border-slate-700 px-2 py-1 rounded-md text-xs text-slate-200 shadow-sm opacity-0 group-hover:opacity-100 transition pointer-events-none z-10">
-              <span className="font-medium text-white">{i.name}</span> · {i.vehicles} veh
+              <span className="font-medium text-white">{i.name}</span> · {totalVehicles} veh
             </span>
           </button>
         );

@@ -676,7 +676,7 @@ def main():
     )
     parser.add_argument(
         "--video", "-v",
-        default="C:\\Users\\ahnaf\\Downloads\\MachineLearning\\plate-register\\vehicle_video.mp4",
+        default="C:\\Users\\adeka\\Videos\\2103099-uhd_3840_2160_30fps.mp4",
         help="Path ke file video (default: vehicle_video.mp4)",
     )
     parser.add_argument(
