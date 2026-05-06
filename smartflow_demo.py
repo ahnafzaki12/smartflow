@@ -280,59 +280,61 @@ def _draw_hud(img: np.ndarray, state: BBoxState, frame_no: int, live_fps: float)
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-def _random_asymmetric_weights(n: int = 4) -> list[float]:
+def distribute_traffic(real_count_A: int) -> dict[str, int]:
     """
-    Hasilkan n bobot acak yang dijamin *tidak rata*.
-    Minimum spread antara bobot terbesar dan terkecil = 30 pp.
+    Tahap 2 – Simpang A menggunakan data riil object detection.
+    Simpang B, C, D menggunakan data dummy (nantinya akan di-call dari frontend/API).
     """
-    while True:
-        raw = np.random.dirichlet(np.random.uniform(0.5, 3.0, n))
-        raw = raw.tolist()
-        if max(raw) - min(raw) >= 0.30:
-            return raw
+    # Data dummy untuk B, C, D (sementara pakai random)
+    dummy_b = random.randint(5, 50)
+    dummy_c = random.randint(5, 50)
+    dummy_d = random.randint(5, 50)
 
-
-def distribute_traffic(total_vehicles: int) -> dict[str, int]:
-    """
-    Tahap 2 – Bagi total_vehicles ke 4 persimpangan dengan bobot asimetris acak.
-    Sisa pembulatan diberikan ke persimpangan dengan antrean terpanjang.
-    """
-    weights = _random_asymmetric_weights(4)
-    counts  = [int(total_vehicles * w) for w in weights]
-
-    # koreksi sisa
-    diff = total_vehicles - sum(counts)
-    if diff > 0:
-        idx = counts.index(max(counts))
-        counts[idx] += diff
-
-    return {name: max(0, c) for name, c in zip(INTERSECTIONS, counts)}
+    return {
+        "Simpang A": max(0, real_count_A),
+        "Simpang B": dummy_b,
+        "Simpang C": dummy_c,
+        "Simpang D": dummy_d
+    }
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAHAP 3 : ALGORITMA SMARTFLOW
 # ══════════════════════════════════════════════════════════════════════════════
 
-def calculate_green_light(queue_dict: dict[str, int]) -> dict[str, int]:
+# State global
+CURRENT_GREEN_IDX = 0
+GREEN_REMAINING = 0   # sisa detik hijau
+GREEN_ORDER = ["Simpang B", "Simpang C", "Simpang D", "Simpang A"]
+
+def update_green_light(queue_dict: dict[str, int], dt: float = 0.5) -> dict[str, int]:
     """
-    Tahap 3 – Proporsional terhadap panjang antrean.
-    Total slot waktu satu siklus = jumlah semua durasi hijau (∑ green).
-    Batas: [MIN_GREEN, MAX_GREEN] detik.
+    Menghitung durasi hijau countdown.
+    dt = interval waktu update (detik), misal loop 0.5s
     """
-    total_q = sum(queue_dict.values())
+    global CURRENT_GREEN_IDX, GREEN_REMAINING, GREEN_ORDER
 
-    if total_q == 0:
-        # semua persimpangan kosong → bagikan rata minimum
-        return {k: MIN_GREEN for k in queue_dict}
+    green_times = {k: 0 for k in queue_dict}  # default semua merah
+    active = GREEN_ORDER[CURRENT_GREEN_IDX]
 
-    TOTAL_CYCLE = 4 * MAX_GREEN   # budget siklus total (240 dtk default)
-    green_times: dict[str, int] = {}
+    if GREEN_REMAINING <= 0:
+        # mulai countdown baru berdasarkan panjang antrean
+        queue_len = queue_dict[active]
+        GREEN_REMAINING = min(MAX_GREEN, max(MIN_GREEN, queue_len))
+    
+    # beri hijau ke persimpangan aktif
+    green_times[active] = int(GREEN_REMAINING)
 
-    for name, count in queue_dict.items():
-        proportion   = count / total_q
-        raw_duration = proportion * TOTAL_CYCLE
-        clamped      = int(np.clip(raw_duration, MIN_GREEN, MAX_GREEN))
-        green_times[name] = clamped
+    # Kurangi sisa durasi hijau
+    GREEN_REMAINING -= dt
+
+    # Kurangi volume kendaraan sesuai flow (misal 1 unit per dt)
+    queue_dict[active] = max(0, queue_dict[active] - 1)
+
+    # Jika hijau habis & antrean 0, pindah ke persimpangan berikutnya
+    if GREEN_REMAINING <= 0 and queue_dict[active] == 0:
+        CURRENT_GREEN_IDX = (CURRENT_GREEN_IDX + 1) % len(GREEN_ORDER)
+        GREEN_REMAINING = 0  # reset countdown
 
     return green_times
 
@@ -427,7 +429,7 @@ def build_dashboard(
 
     rank_labels = ["🥇 UTAMA", "🥈 TINGGI", "🥉 SEDANG", "   RENDAH"]
     for rank, (name, dur) in enumerate(sorted_ai):
-        ratio   = dur / max_green
+        ratio   = dur / max(max_green, 1)  # <-- modifikasi di sini
         g_color = "green" if ratio > 0.75 else ("yellow" if ratio > 0.45 else "red")
         bar_len = int(ratio * 20)
         bar     = f"[{g_color}]{'█' * bar_len}{'░' * (20 - bar_len)}[/]"
@@ -501,10 +503,13 @@ def run_demo_mode():
             detection_hist.append(total_vehicle_detected)
 
             now = time.time()
-            if now - last_distribute >= interval_sec:
+            if now - last_distribute >= interval_sec or frame_no == 1:
                 queue_dict   = distribute_traffic(total_vehicle_detected)
-                green_lights = calculate_green_light(queue_dict)
                 last_distribute = now
+            else:
+                queue_dict["Simpang A"] = total_vehicle_detected
+
+            green_lights = update_green_light(queue_dict, dt=0.5)
 
             dashboard = build_dashboard(
                 frame_no        = frame_no,
@@ -609,9 +614,12 @@ def run_video_mode(video_path: str, show_window: bool = True):
             live_fps  = float(np.mean(fps_buffer))
 
             # ── Tahap 2 & 3: Distribusi & Keputusan tiap N frame ─────────────
-            if frame_no % DISTRIBUTE_EVERY_N_FRAMES == 0:
+            if frame_no % DISTRIBUTE_EVERY_N_FRAMES == 0 or frame_no == 1:
                 queue_dict   = distribute_traffic(total_vehicle_detected)
-                green_lights = calculate_green_light(queue_dict)
+            else:
+                queue_dict["Simpang A"] = total_vehicle_detected
+
+            green_lights = update_green_light(queue_dict, dt=0.5)
 
             # ── Tahap 5: Render Bounding Box ke jendela OpenCV ────────────────
             if show_window:
@@ -653,7 +661,7 @@ def main():
     )
     parser.add_argument(
         "--video", "-v",
-        default="vehicle_video.mp4",
+        default="C:\\Users\\ahnaf\\Downloads\\MachineLearning\\plate-register\\vehicle_video.mp4",
         help="Path ke file video (default: vehicle_video.mp4)",
     )
     parser.add_argument(
