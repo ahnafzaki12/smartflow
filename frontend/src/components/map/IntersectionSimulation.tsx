@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { Car, Bike, Truck } from 'lucide-react';
-import { useSmartFlowApi } from '@/hooks/useSmartFlowApi';
 
 type Direction = 'N' | 'S' | 'E' | 'W';
 type LightState = 'green' | 'yellow' | 'red';
@@ -51,53 +50,42 @@ export function IntersectionSimulation() {
   const reqRef = useRef<number>();
   const idCounter = useRef(0);
 
-  const { data: apiData } = useSmartFlowApi();
-  const queueRef = useRef({ A: 0, B: 0, C: 0, D: 0 });
-
-  // Sync lights with API
+  // ─── Traffic Light Cycle ──────────────────────────────────────────────────
   useEffect(() => {
-    if (!apiData) return;
-    
-    // API logic: if > 0 then green, else red
-    const newLights: { N: LightState; E: LightState; S: LightState; W: LightState } = {
-      N: apiData.green_lights['Simpang A'] > 0 ? 'green' : 'red',
-      E: apiData.green_lights['Simpang B'] > 0 ? 'green' : 'red',
-      S: apiData.green_lights['Simpang C'] > 0 ? 'green' : 'red',
-      W: apiData.green_lights['Simpang D'] > 0 ? 'green' : 'red',
-    };
-    
-    setLights(newLights);
-    lightsRef.current = newLights;
+    // Phase durations in ms
+    const GREEN = 10000;
+    const YELLOW = 3000;
 
-    // Update queueRef for spawning logic
-    queueRef.current = {
-      A: apiData.queue['Simpang A'],
-      B: apiData.queue['Simpang B'],
-      C: apiData.queue['Simpang C'],
-      D: apiData.queue['Simpang D'],
+    let timeout: ReturnType<typeof setTimeout>;
+
+    const runCycle = (phase: number) => {
+      const getStates = (p: number): { N: LightState; E: LightState; S: LightState; W: LightState } => ({
+        N: p === 0 ? 'green' : (p === 1 ? 'yellow' : 'red'),
+        E: p === 2 ? 'green' : (p === 3 ? 'yellow' : 'red'),
+        S: p === 4 ? 'green' : (p === 5 ? 'yellow' : 'red'),
+        W: p === 6 ? 'green' : (p === 7 ? 'yellow' : 'red'),
+      });
+
+      const newLights = getStates(phase);
+      setLights(newLights);
+      lightsRef.current = newLights;
+
+      const duration = phase % 2 === 0 ? GREEN : YELLOW;
+      timeout = setTimeout(() => runCycle((phase + 1) % 8), duration);
     };
-  }, [apiData]);
+
+    runCycle(0);
+    return () => clearTimeout(timeout);
+  }, []);
 
   // ─── Vehicle Spawner ──────────────────────────────────────────────────────
   useEffect(() => {
     const spawn = () => {
+      const dirs: Direction[] = ['N', 'S', 'E', 'W'];
       const types: VehicleType[] = ['car', 'car', 'motorcycle', 'motorcycle', 'truck'];
+      
+      const dir = dirs[Math.floor(Math.random() * dirs.length)];
       const type = types[Math.floor(Math.random() * types.length)];
-      
-      const q = queueRef.current;
-      const total = q.A + q.B + q.C + q.D;
-      
-      let dir: Direction = 'N';
-      if (total > 0) {
-        let r = Math.random() * total;
-        if (r < q.A) dir = 'N';
-        else if (r < q.A + q.B) dir = 'E';
-        else if (r < q.A + q.B + q.C) dir = 'S';
-        else dir = 'W';
-      } else {
-        const dirs: Direction[] = ['N', 'S', 'E', 'W'];
-        dir = dirs[Math.floor(Math.random() * dirs.length)];
-      }
       
       // Don't spawn if the start of the lane is blocked (backpressure)
       const isBlocked = vehiclesRef.current.some((v) => v.dir === dir && v.pos < 20);
@@ -249,12 +237,6 @@ export function IntersectionSimulation() {
         <circle cx="245" cy="150" r="6" fill={getLightColor(lights.E)} stroke="#334155" strokeWidth="2" />
         {/* West Light (controls cars going right) */}
         <circle cx="155" cy="250" r="6" fill={getLightColor(lights.W)} stroke="#334155" strokeWidth="2" />
-
-        {/* Labels for Simpang A, B, C, D */}
-        <text x="200" y="30" fill="#94a3b8" fontSize="24" fontWeight="bold" textAnchor="middle" opacity="0.6">A</text>
-        <text x="370" y="200" fill="#94a3b8" fontSize="24" fontWeight="bold" textAnchor="middle" alignmentBaseline="central" opacity="0.6">B</text>
-        <text x="200" y="380" fill="#94a3b8" fontSize="24" fontWeight="bold" textAnchor="middle" opacity="0.6">C</text>
-        <text x="30" y="200" fill="#94a3b8" fontSize="24" fontWeight="bold" textAnchor="middle" alignmentBaseline="central" opacity="0.6">D</text>
       </svg>
 
       {/* Legend */}
