@@ -11,3 +11,11 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+button, a, [role="button"], select, input[type="checkbox"], input[type="radio"] {
+  cursor: pointer;
+}
+
+button:disabled, a:disabled, [role="button"]:disabled, [aria-disabled="true"], button[disabled], input:disabled, select:disabled {
+  cursor: not-allowed;
+}

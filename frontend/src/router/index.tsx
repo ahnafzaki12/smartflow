@@ -1,6 +1,7 @@
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { AppShell } from '@/components/layout/AppShell';
 import DashboardPage from '@/pages/DashboardPage';
+import IntersectionsPage from '@/pages/IntersectionsPage';
 import IntersectionDetailPage from '@/pages/IntersectionDetailPage';
 import AnalyticsPage from '@/pages/AnalyticsPage';
 import AlertsPage from '@/pages/AlertsPage';
@@ -12,7 +13,7 @@ const router = createBrowserRouter([
     element: <AppShell />,
     children: [
       { index: true,                element: <DashboardPage /> },
-      { path: 'intersections',      element: <DashboardPage /> },   // list view — same map
+      { path: 'intersections',      element: <IntersectionsPage /> },
       { path: 'intersections/:id',  element: <IntersectionDetailPage /> },
       { path: 'analytics',          element: <AnalyticsPage /> },
       { path: 'alerts',             element: <AlertsPage /> },

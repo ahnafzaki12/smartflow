@@ -16,7 +16,7 @@ export interface Intersection {
 }
 
 export interface Lane {
-  name: 'North' | 'East' | 'South' | 'West';
+  name: 'Simpang A' | 'Simpang B' | 'Simpang C' | 'Simpang D';
   cars: number;
   motorcycles: number;
   trucks: number;

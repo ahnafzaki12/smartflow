@@ -29,11 +29,3 @@ export const MOCK_PEAK_HOUR: PeakHourDataPoint[] = Array.from({ length: 24 }, (_
   weekend: 25 + (i > 10 && i < 14 ? 35 : 0) + (i > 18 && i < 22 ? 45 : 0) + Math.random() * 10,
 }));
 
-export const AI_DECISION_TEMPLATES = [
-  { loc: 'Sudirman–Thamrin', from: 30, to: 42, reason: 'North-bound queue detected' },
-  { loc: 'Gatot Subroto',    from: 45, to: 38, reason: 'Flow normalized — easing timing' },
-  { loc: 'Senayan Gate',     from: 25, to: 55, reason: 'Event crowd egress predicted' },
-  { loc: 'Rasuna Said',      from: 35, to: 28, reason: 'Off-peak adjustment applied' },
-  { loc: 'Kuningan HR',      from: 40, to: 52, reason: 'Motorcycle surge detected' },
-  { loc: 'Semanggi Loop',    from: 50, to: 45, reason: 'Merge congestion resolved' },
-];

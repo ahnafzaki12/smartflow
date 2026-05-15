@@ -40,12 +40,3 @@ export interface KpiMetric {
   delta?: number;
   deltaGood?: 'up' | 'down';
 }
-
-export interface AiDecisionEntry {
-  id: number;
-  loc: string;
-  from: number;
-  to: number;
-  reason: string;
-  time: string;
-}

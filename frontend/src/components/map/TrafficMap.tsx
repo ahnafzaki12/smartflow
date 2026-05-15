@@ -1,6 +1,5 @@
-import { motion } from 'motion/react';
 import type { Intersection, IntersectionStatus } from '@/types/intersection';
-import { useSmartFlowApi } from '@/hooks/useSmartFlowApi';
+import { useSmartFlow } from '@/providers/SmartFlowProvider';
 
 const statusColors: Record<IntersectionStatus, string> = {
   smooth:    '#10b981',
@@ -12,24 +11,32 @@ interface TrafficMapProps {
   intersections: Intersection[];
   selectedId?: string;
   onSelect?: (id: string) => void;
+  height?: number | string;
 }
 
-export function TrafficMap({ intersections, selectedId, onSelect }: TrafficMapProps) {
-  const { data: apiData } = useSmartFlowApi();
+export function TrafficMap({ intersections, selectedId, onSelect, height = 440 }: TrafficMapProps) {
+  // Fix #2 + #7: consume from context, removed unused motion import
+  const { apiData } = useSmartFlow();
 
   const getLights = () => {
+    const getColor = (name: string) => {
+      const phase = (apiData as any).phases?.[name];
+      if (phase === 'GREEN') return '#10b981';
+      if (phase === 'YELLOW') return '#f59e0b';
+      return '#ef4444'; // RED and ALL_RED
+    };
     return {
-      N: apiData.green_lights['Simpang A'] > 0 ? '#10b981' : '#ef4444',
-      E: apiData.green_lights['Simpang B'] > 0 ? '#10b981' : '#ef4444',
-      S: apiData.green_lights['Simpang C'] > 0 ? '#10b981' : '#ef4444',
-      W: apiData.green_lights['Simpang D'] > 0 ? '#10b981' : '#ef4444',
+      A: getColor('Simpang A'),
+      B: getColor('Simpang B'),
+      C: getColor('Simpang C'),
+      D: getColor('Simpang D'),
     };
   };
 
   return (
     <div
       className="relative rounded-2xl border border-slate-800 bg-slate-950 overflow-hidden shadow-sm"
-      style={{ height: 440 }}
+      style={{ height }}
     >
       {/* SVG road grid */}
       <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 100">
@@ -64,7 +71,7 @@ export function TrafficMap({ intersections, selectedId, onSelect }: TrafficMapPr
         const lights = getLights();
         
         const totalVehicles = apiData.queue['Simpang A'] + apiData.queue['Simpang B'] + apiData.queue['Simpang C'] + apiData.queue['Simpang D'];
-        const liveStatus = totalVehicles > 60 ? 'congested' : totalVehicles > 30 ? 'medium' : 'smooth';
+        const liveStatus = totalVehicles > 60 ? 'Berhenti' : totalVehicles > 30 ? 'Hati-hati' : 'Jalan';
 
         return (
           <button
@@ -72,21 +79,21 @@ export function TrafficMap({ intersections, selectedId, onSelect }: TrafficMapPr
             onClick={() => onSelect?.(i.id)}
             className="absolute -translate-x-1/2 -translate-y-1/2 group focus:outline-none w-4 h-4 flex items-center justify-center"
             style={{ left: `${i.x}%`, top: `${i.y}%` }}
-            title={`${i.name} — ${liveStatus} · ${totalVehicles} veh`}
+            title={`${i.name} — ${liveStatus} · ${totalVehicles} kdr`}
           >
             {/* Traffic Lights */}
-            {/* North Light */}
-            <span className={`absolute -top-5 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full transition-colors duration-300 shadow-[0_0_6px_rgba(0,0,0,0.8)] ${isSelected ? 'ring-2 ring-white' : ''}`} style={{ background: lights.N }} />
-            {/* South Light */}
-            <span className={`absolute -bottom-5 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full transition-colors duration-300 shadow-[0_0_6px_rgba(0,0,0,0.8)] ${isSelected ? 'ring-2 ring-white' : ''}`} style={{ background: lights.S }} />
-            {/* East Light */}
-            <span className={`absolute top-1/2 -right-5 -translate-y-1/2 w-3 h-3 rounded-full transition-colors duration-300 shadow-[0_0_6px_rgba(0,0,0,0.8)] ${isSelected ? 'ring-2 ring-white' : ''}`} style={{ background: lights.E }} />
-            {/* West Light */}
-            <span className={`absolute top-1/2 -left-5 -translate-y-1/2 w-3 h-3 rounded-full transition-colors duration-300 shadow-[0_0_6px_rgba(0,0,0,0.8)] ${isSelected ? 'ring-2 ring-white' : ''}`} style={{ background: lights.W }} />
+            {/* Simpang A Light */}
+            <span className={`absolute -top-5 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full transition-colors duration-300 shadow-[0_0_6px_rgba(0,0,0,0.8)] ${isSelected ? 'ring-2 ring-white' : ''}`} style={{ background: lights.A }} />
+            {/* Simpang C Light */}
+            <span className={`absolute -bottom-5 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full transition-colors duration-300 shadow-[0_0_6px_rgba(0,0,0,0.8)] ${isSelected ? 'ring-2 ring-white' : ''}`} style={{ background: lights.C }} />
+            {/* Simpang B Light */}
+            <span className={`absolute top-1/2 -right-5 -translate-y-1/2 w-3 h-3 rounded-full transition-colors duration-300 shadow-[0_0_6px_rgba(0,0,0,0.8)] ${isSelected ? 'ring-2 ring-white' : ''}`} style={{ background: lights.B }} />
+            {/* Simpang D Light */}
+            <span className={`absolute top-1/2 -left-5 -translate-y-1/2 w-3 h-3 rounded-full transition-colors duration-300 shadow-[0_0_6px_rgba(0,0,0,0.8)] ${isSelected ? 'ring-2 ring-white' : ''}`} style={{ background: lights.D }} />
 
             {/* Tooltip label */}
             <span className="absolute left-5 top-1/2 -translate-y-1/2 whitespace-nowrap bg-slate-800/90 backdrop-blur border border-slate-700 px-2 py-1 rounded-md text-xs text-slate-200 shadow-sm opacity-0 group-hover:opacity-100 transition pointer-events-none z-10">
-              <span className="font-medium text-white">{i.name}</span> · {totalVehicles} veh
+              <span className="font-medium text-white">{i.name}</span> · {totalVehicles} kdr
             </span>
           </button>
         );
@@ -97,7 +104,7 @@ export function TrafficMap({ intersections, selectedId, onSelect }: TrafficMapPr
         {(['smooth', 'medium', 'congested'] as IntersectionStatus[]).map((s) => (
           <div key={s} className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full shadow-sm" style={{ background: statusColors[s], boxShadow: `0 0 8px ${statusColors[s]}` }} />
-            <span className="capitalize">{s}</span>
+            <span className="capitalize">{s === 'smooth' ? 'Jalan' : s === 'medium' ? 'Hati-hati' : 'Berhenti'}</span>
           </div>
         ))}
       </div>
@@ -105,7 +112,7 @@ export function TrafficMap({ intersections, selectedId, onSelect }: TrafficMapPr
       {/* Live badge */}
       <div className="absolute top-4 right-4 bg-slate-900/80 backdrop-blur rounded-xl border border-slate-800 shadow-sm px-3 py-2 flex items-center gap-2 text-xs">
         <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_#10b981]" />
-        <span className="text-slate-300">Live · Jakarta Central Zone</span>
+        <span className="text-slate-300">Live · Zona Surabaya Timur</span>
       </div>
     </div>
   );

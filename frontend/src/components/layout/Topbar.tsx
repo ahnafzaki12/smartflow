@@ -24,7 +24,7 @@ export function Topbar({ title, subtitle }: TopbarProps) {
         <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
         <input
           id="topbar-search"
-          placeholder="Search intersection, zone..."
+          placeholder="Cari persimpangan, zona..."
           className={cn(
             'w-full pl-10 pr-4 py-2 rounded-lg bg-input-background border border-transparent',
             'focus:border-sky-400 outline-none transition text-sm'
@@ -36,8 +36,8 @@ export function Topbar({ title, subtitle }: TopbarProps) {
       <button
         id="topbar-darkmode"
         onClick={toggleDarkMode}
-        className="relative w-10 h-10 rounded-lg hover:bg-accent flex items-center justify-center transition-colors"
-        title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+        className="relative w-10 h-10 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent flex items-center justify-center transition-colors"
+        title={darkMode ? 'Beralih ke mode terang' : 'Beralih ke mode gelap'}
       >
         {darkMode ? (
           <Sun className="w-[18px] h-[18px]" />
@@ -49,7 +49,7 @@ export function Topbar({ title, subtitle }: TopbarProps) {
       {/* Notifications */}
       <button
         id="topbar-notifications"
-        className="relative w-10 h-10 rounded-lg hover:bg-accent flex items-center justify-center transition-colors"
+        className="relative w-10 h-10 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent flex items-center justify-center transition-colors"
       >
         <Bell className="w-[18px] h-[18px]" />
         <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-red-500" />

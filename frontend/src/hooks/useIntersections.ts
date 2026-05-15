@@ -1,35 +1,31 @@
 import { useEffect } from 'react';
 import { useIntersectionStore } from '@/store/intersectionStore';
-import type { IntersectionStatus } from '@/types/intersection';
-
-const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true';
+import { useSmartFlow } from '@/providers/SmartFlowProvider';
 
 /**
- * Simulates real-time intersection status updates.
- * When VITE_USE_MOCK=false, replace this with actual WebSocket messages.
+ * useIntersections — Fix #2 + #4
+ *
+ * Consumes from SmartFlowProvider context (single poller).
+ * Previously called useSmartFlowApi() directly — caused duplicate polling.
+ * Removed unused useCallback import (Fix #4).
  */
 export function useIntersections() {
   const { intersections, selectedId, setSelectedId, updateStatus } = useIntersectionStore();
 
+  const { apiData } = useSmartFlow();
+
+  // Map API queue data → intersection store status
   useEffect(() => {
-    if (!USE_MOCK) return; // Real-time updates come from WebSocket in production
+    const mapping: Array<{ id: string; key: 'Simpang A' | 'Simpang B' | 'Simpang C' | 'Simpang D' }> = [
+      { id: 'upn', key: 'Simpang A' },
+    ];
 
-    const interval = setInterval(() => {
-      intersections.forEach((i) => {
-        if (Math.random() > 0.8) {
-          const statuses: IntersectionStatus[] = ['smooth', 'medium', 'congested'];
-          const next = statuses[Math.floor(Math.random() * statuses.length)];
-          const newVehicles = Math.max(20, i.vehicles + Math.round((Math.random() - 0.5) * 30));
-          updateStatus(i.id, next, newVehicles);
-        } else {
-          const delta = Math.max(20, i.vehicles + Math.round((Math.random() - 0.5) * 10));
-          updateStatus(i.id, i.status, delta);
-        }
-      });
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, [intersections, updateStatus]);
+    mapping.forEach(({ id, key }) => {
+      const vehicles = apiData.queue[key] ?? 0;
+      const status   = vehicles > 35 ? 'congested' : vehicles > 18 ? 'medium' : 'smooth';
+      updateStatus(id, status, vehicles);
+    });
+  }, [apiData, updateStatus]);
 
   const selected = intersections.find((i) => i.id === selectedId) ?? intersections[0];
 

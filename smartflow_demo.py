@@ -31,6 +31,7 @@ import argparse
 import os
 import random
 import sys
+import math
 import threading
 import time
 from collections import defaultdict, deque
@@ -285,10 +286,10 @@ def distribute_traffic(real_count_A: int) -> dict[str, int]:
     Tahap 2 – Simpang A menggunakan data riil object detection.
     Simpang B, C, D menggunakan data dummy (nantinya akan di-call dari frontend/API).
     """
-    # Data dummy untuk B, C, D (sementara pakai random)
-    dummy_b = random.randint(5, 50)
-    dummy_c = random.randint(5, 50)
-    dummy_d = random.randint(5, 50)
+    # Data dummy untuk B, C, D (dengan tingkat kepadatan berbeda)
+    dummy_b = random.randint(5, 15)   # Tidak padat
+    dummy_c = random.randint(20, 35)  # Sedikit lebih padat dari B
+    dummy_d = random.randint(40, 60)  # Lebih padat dari C
 
     return {
         "Simpang A": max(0, real_count_A),
@@ -299,58 +300,180 @@ def distribute_traffic(real_count_A: int) -> dict[str, int]:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAHAP 3 : ALGORITMA SMARTFLOW
+# TAHAP 3 : ALGORITMA SMARTFLOW v3 — Proportional Weighted + Yellow + ALL_RED
 # ══════════════════════════════════════════════════════════════════════════════
 
-# State global
+# ── Konstanta Timing ──
+CYCLE_TIME      = 120   # total 1 siklus penuh (detik)
+YELLOW_PHASE    = 3     # durasi kuning antar peralihan (detik)
+ALL_RED_GAP     = 2     # durasi semua-merah setelah kuning (detik) — keselamatan
+MAX_GREEN_SIDE  = 45    # batas atas hijau per sisi (detik)
+SAT_FLOW_RATE   = 0.5   # kendaraan/detik yang bisa lewat saat hijau (≈1800 kdr/jam)
+
+# ── Deadlock Detection ──
+DEADLOCK_THRESHOLD    = 40   # kdr minimum per simpang untuk dianggap "padat"
+DEADLOCK_MIN_GREEN    = 20   # durasi hijau minimum saat deadlock
+DEADLOCK_CYCLE_FACTOR = 0.5  # percepat siklus 50% saat deadlock
+_deadlock_active      = False
+
+# ── State Global ──
 CURRENT_GREEN_IDX = 0
-GREEN_REMAINING = 0   # sisa detik hijau
-GREEN_ORDER = ["Simpang B", "Simpang C", "Simpang D", "Simpang A"]
-# Constants baru
-MAX_GREEN_SIDE = 45  # detik per sisi
+GREEN_REMAINING   = 0        # sisa detik hijau untuk simpang aktif
+ALL_RED_REMAINING = 0        # sisa detik semua-merah (0 = tidak aktif)
+GREEN_ORDER       = ["Simpang A", "Simpang B", "Simpang C", "Simpang D"]
+EMERGENCY_MODE    = False     # flag mode darurat
+EMERGENCY_LANE    = None      # simpang yang diberi hijau saat darurat
+
+# ── Phase Tracking (untuk frontend) ──
+# 'GREEN', 'YELLOW', 'ALL_RED', atau 'RED' per simpang
+CURRENT_PHASE: dict[str, str] = {k: "RED" for k in INTERSECTIONS}
+CYCLE_NUMBER  = 0             # nomor siklus kumulatif
+
+# ── Cache durasi hijau per siklus (dihitung ulang setiap siklus baru) ──
+_cycle_splits: dict[str, int] = {}
+
+
+def detect_deadlock(queue_dict: dict[str, int]) -> bool:
+    """Deadlock jika SEMUA simpang >= DEADLOCK_THRESHOLD."""
+    return all(v >= DEADLOCK_THRESHOLD for v in queue_dict.values())
+
+
+def _reorder_phases(queue_dict: dict[str, int]) -> list[str]:
+    """Urutkan simpang: terbanyak antrean duluan agar yang paling padat dilayani lebih dulu."""
+    return sorted(queue_dict.keys(), key=lambda k: queue_dict[k], reverse=True)
+
+
+def calculate_green_splits(
+    queue_dict: dict,
+    cycle_override: Optional[float] = None,
+    min_green_override: Optional[int] = None,
+) -> dict:
+    """
+    Hitung distribusi durasi hijau proporsional berdasarkan antrean.
+    Setiap simpang mendapat durasi ∝ (queue_i / total_queue) × usable_time.
+    Jaminan: MIN_GREEN ≤ durasi ≤ MAX_GREEN_SIDE untuk setiap simpang.
+
+    Args:
+        queue_dict: panjang antrean per simpang
+        cycle_override: override CYCLE_TIME (untuk deadlock mode)
+        min_green_override: override MIN_GREEN (untuk deadlock mode)
+    """
+    effective_cycle = cycle_override or CYCLE_TIME
+    effective_min   = min_green_override or MIN_GREEN
+
+    n_intersections = len(queue_dict)
+    usable_time = effective_cycle - (n_intersections * ALL_RED_GAP)
+    usable_time = max(usable_time, n_intersections * effective_min)  # floor
+    total_q = sum(queue_dict.values())
+
+    splits: dict[str, int] = {}
+
+    if total_q == 0:
+        # Semua kosong → bagi rata
+        equal = usable_time // n_intersections
+        for k in queue_dict:
+            splits[k] = min(MAX_GREEN_SIDE, max(effective_min, equal))
+        return splits
+
+    for k, q in queue_dict.items():
+        ratio = q / total_q
+        raw   = ratio * usable_time
+        splits[k] = int(min(MAX_GREEN_SIDE, max(effective_min, raw)))
+
+    return splits
+
+
+def _start_new_cycle(queue_dict: dict[str, int]):
+    """Inisialisasi siklus baru: hitung splits, urutkan fase, reset index."""
+    global GREEN_ORDER, CURRENT_GREEN_IDX, GREEN_REMAINING, _cycle_splits
+    global _deadlock_active, CYCLE_NUMBER
+
+    CYCLE_NUMBER += 1
+
+    # ── Dynamic ordering: simpang terpadat duluan ──
+    GREEN_ORDER = _reorder_phases(queue_dict)
+
+    # ── Deadlock detection ──
+    _deadlock_active = detect_deadlock(queue_dict)
+    if _deadlock_active:
+        _cycle_splits = calculate_green_splits(
+            queue_dict,
+            cycle_override=CYCLE_TIME * DEADLOCK_CYCLE_FACTOR,
+            min_green_override=DEADLOCK_MIN_GREEN,
+        )
+    else:
+        _cycle_splits = calculate_green_splits(queue_dict)
+
+    CURRENT_GREEN_IDX = 0
+    GREEN_REMAINING = _cycle_splits.get(GREEN_ORDER[0], MIN_GREEN)
+
 
 def update_green_light(queue_dict: dict[str, int], dt: float = 0.5) -> dict[str, int]:
     """
-    Update countdown hijau per persimpangan.
-    - Max Green: 45 detik per sisi
-    - Min Green: 15 detik
-    - Jika persimpangan aktif kosong → langsung pindah hijau ke berikutnya
+    Algoritma SmartFlow v3 — Proportional Weighted + Yellow + ALL_RED.
+
+    Perubahan dari v2:
+    - Dynamic ordering: simpang terpadat mendapat giliran duluan setiap siklus
+    - ALL_RED gap (2s): periode semua-merah setelah kuning (keselamatan)
+    - Deadlock detection: jika semua simpang padat → siklus dipercepat
+    - Phase tracking: setiap simpang punya status GREEN/YELLOW/ALL_RED/RED
+    - Queue reduction DIPISAHKAN dari timing (tidak di sini)
+    - Lampu kuning dimasukkan ke dalam sisa countdown hijau (detik-detik terakhir).
     """
-    global CURRENT_GREEN_IDX, GREEN_REMAINING, GREEN_ORDER
+    global CURRENT_GREEN_IDX, GREEN_REMAINING, ALL_RED_REMAINING
+    global _cycle_splits, EMERGENCY_MODE, EMERGENCY_LANE, CURRENT_PHASE
 
-    green_times = {k: 0 for k in queue_dict}  # semua default merah
-    active = GREEN_ORDER[CURRENT_GREEN_IDX]
+    green_times = {k: 0 for k in queue_dict}
+    CURRENT_PHASE = {k: "RED" for k in queue_dict}
 
-    # Jika semua persimpangan kosong, beri MIN_GREEN ke semua
-    if all(v == 0 for v in queue_dict.values()):
-        for k in queue_dict:
-            green_times[k] = MIN_GREEN
-        GREEN_REMAINING = MIN_GREEN
+    # ── Mode Darurat ──
+    if EMERGENCY_MODE:
+        if EMERGENCY_LANE and EMERGENCY_LANE in green_times:
+            green_times[EMERGENCY_LANE] = MAX_GREEN_SIDE
+            CURRENT_PHASE[EMERGENCY_LANE] = "GREEN"
         return green_times
 
-    # Kurangi sisa durasi hijau
+    # ── Awal pertama atau siklus belum dimulai ──
+    if not _cycle_splits:
+        _start_new_cycle(queue_dict)
+
+    active = GREEN_ORDER[CURRENT_GREEN_IDX]
+
+    # ── Fase ALL_RED sedang aktif ──
+    if ALL_RED_REMAINING > 0:
+        ALL_RED_REMAINING -= dt
+        if ALL_RED_REMAINING <= 0:
+            ALL_RED_REMAINING = 0
+            CURRENT_GREEN_IDX = (CURRENT_GREEN_IDX + 1) % len(GREEN_ORDER)
+            if CURRENT_GREEN_IDX == 0:
+                _start_new_cycle(queue_dict)
+            active = GREEN_ORDER[CURRENT_GREEN_IDX]
+            GREEN_REMAINING = _cycle_splits.get(active, MIN_GREEN)
+        else:
+            CURRENT_PHASE[active] = "ALL_RED"
+            return green_times
+
+    # ── Fase HIJAU (Termasuk Kuning di akhir) ──
     GREEN_REMAINING -= dt
 
-    # Jika persimpangan aktif kosong → langsung pindah
-    if queue_dict[active] == 0:
-        CURRENT_GREEN_IDX = (CURRENT_GREEN_IDX + 1) % len(GREEN_ORDER)
-        active = GREEN_ORDER[CURRENT_GREEN_IDX]
-        queue_len = queue_dict[active]
-        GREEN_REMAINING = min(MAX_GREEN_SIDE, max(MIN_GREEN, queue_len))
+    if queue_dict.get(active, 0) == 0:
+        others_have_queue = any(queue_dict.get(k, 0) > 0 for k in GREEN_ORDER if k != active)
+        if others_have_queue:
+            if GREEN_REMAINING > YELLOW_PHASE:
+                GREEN_REMAINING = YELLOW_PHASE
 
-    # Jika countdown habis → pindah persimpangan berikutnya
-    elif GREEN_REMAINING <= 0:
-        CURRENT_GREEN_IDX = (CURRENT_GREEN_IDX + 1) % len(GREEN_ORDER)
-        active = GREEN_ORDER[CURRENT_GREEN_IDX]
-        queue_len = queue_dict[active]
-        GREEN_REMAINING = min(MAX_GREEN_SIDE, max(MIN_GREEN, queue_len))
+    if GREEN_REMAINING <= 0:
+        GREEN_REMAINING = 0
+        ALL_RED_REMAINING = ALL_RED_GAP
+        CURRENT_PHASE[active] = "ALL_RED"
+        return green_times
 
-    # Beri hijau ke persimpangan aktif
-    green_times[active] = int(GREEN_REMAINING)
+    if GREEN_REMAINING <= YELLOW_PHASE:
+        CURRENT_PHASE[active] = "YELLOW"
+    else:
+        CURRENT_PHASE[active] = "GREEN"
 
-    # Kurangi volume kendaraan sesuai flow
-    queue_dict[active] = max(0, queue_dict[active] - 1)
-
+    green_times[active] = int(math.ceil(GREEN_REMAINING))
     return green_times
 
 

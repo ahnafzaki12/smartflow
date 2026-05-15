@@ -6,11 +6,11 @@ import { useUIStore } from '@/store/uiStore';
 type RouteId = 'dashboard' | 'intersections' | 'analytics' | 'alerts' | 'settings';
 
 const navItems: { id: RouteId; label: string; path: string; Icon: typeof LayoutDashboard }[] = [
-  { id: 'dashboard',     label: 'Dashboard',     path: '/',              Icon: LayoutDashboard },
-  { id: 'intersections', label: 'Intersections',  path: '/intersections', Icon: MapPin          },
-  { id: 'analytics',     label: 'Analytics',      path: '/analytics',     Icon: BarChart3       },
-  { id: 'alerts',        label: 'Alerts',          path: '/alerts',        Icon: Bell            },
-  { id: 'settings',      label: 'Settings',        path: '/settings',      Icon: Settings        },
+  { id: 'dashboard',     label: 'Dasbor',        path: '/',              Icon: LayoutDashboard },
+  { id: 'intersections', label: 'Persimpangan',  path: '/intersections', Icon: MapPin          },
+  { id: 'analytics',     label: 'Analisis',      path: '/analytics',     Icon: BarChart3       },
+  { id: 'alerts',        label: 'Peringatan',    path: '/alerts',        Icon: Bell            },
+  { id: 'settings',      label: 'Pengaturan',    path: '/settings',      Icon: Settings        },
 ];
 
 interface SidebarProps {
@@ -35,7 +35,7 @@ export function Sidebar({ alertCount = 0 }: SidebarProps) {
         {!sidebarCollapsed && (
           <div className="overflow-hidden">
             <div className="font-semibold whitespace-nowrap">SmartFlow</div>
-            <div className="text-xs text-muted-foreground whitespace-nowrap">Traffic AI Platform</div>
+            <div className="text-xs text-muted-foreground whitespace-nowrap">Platform AI Lalu Lintas</div>
           </div>
         )}
       </div>
@@ -51,7 +51,7 @@ export function Sidebar({ alertCount = 0 }: SidebarProps) {
               cn(
                 'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-left',
                 isActive
-                  ? 'bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-400'
+                  ? 'bg-sky-50 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300'
                   : 'text-muted-foreground hover:bg-accent hover:text-foreground'
               )
             }
@@ -79,10 +79,10 @@ export function Sidebar({ alertCount = 0 }: SidebarProps) {
       {!sidebarCollapsed && (
         <div className="p-4 border-t border-border">
           <div className="rounded-xl bg-gradient-to-br from-sky-500 to-emerald-500 p-4 text-white">
-            <div className="text-xs opacity-90">System Status</div>
+            <div className="text-xs opacity-90">Status Sistem</div>
             <div className="flex items-center gap-2 mt-1">
               <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
-              <span className="text-sm font-medium">All systems online</span>
+              <span className="text-sm font-medium">Semua sistem daring</span>
             </div>
           </div>
         </div>
@@ -92,7 +92,7 @@ export function Sidebar({ alertCount = 0 }: SidebarProps) {
       <button
         onClick={toggleSidebar}
         className="mx-auto mb-3 p-1.5 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-        title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        title={sidebarCollapsed ? 'Perluas bilah sisi' : 'Tutup bilah sisi'}
       >
         <ChevronLeft
           className={cn('w-4 h-4 transition-transform duration-300', sidebarCollapsed && 'rotate-180')}
